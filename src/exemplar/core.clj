@@ -1,7 +1,14 @@
-(ns exemplar.core)
+(ns exemplar.core
+  (:require [local-file]))
 
 
 (def state (atom {:path nil}))
+
+(defn ns->abs-path [ns]
+  (-> (the-ns ns)
+    (local-file/namespace-to-source)
+    (local-file/find-resource)
+    (.getPath)))
 
 (defn register-path [path]
   (swap! exemplar.core/state assoc :path path))
@@ -19,9 +26,9 @@
 
 (defmacro get-source [ns name]
   (let [met (meta (ns-resolve ns name))
-        path (:file met)
+        abs-path (ns->abs-path ns)
         line (:line met)]
-    (with-open [rdr (clojure.java.io/reader path)]
+    (with-open [rdr (clojure.java.io/reader abs-path)]
       (let [lines (line-seq rdr)]
         `'~(rec lines (dec line) "")))))
 
@@ -54,7 +61,7 @@
 
 (defn save* [ns name args ^String source out]
   (let [key (clojure.string/join "/" [ns name])
-        entry {key {:in args :out out :source source :ns ns :name name}}]
+        entry {key {:in (vec args) :out out :source source :ns ns :name name}}]
     (write-out (:path (deref exemplar.core/state)) entry)))
 
 (defmacro record [func]

@@ -55,3 +55,17 @@
           :source "(defn my-func [args] (map inc args))"
           :out '(2 3 4 3 3 3)
           :in ['(1 2 3 2 2 2)]})))
+
+(deftest recording
+  (testing "Records first call"
+    (exemplar/record my-func)
+    (my-func [1 2 3])
+    (let [saved (exemplar/show my-func)]
+      (is (= saved
+             {:name 'my-func
+              :ns 'exemplar.core-test
+              :source "(defn my-func [args] (map inc args))"
+              :out '(2 3 4)
+              :in [[1 2 3]]}))
+      (my-func [0])
+      (is (= (exemplar/show my-func) saved)))))

@@ -3,4 +3,5 @@
   :url "https://bitbucket.org/conarrative/exemplar"
   :license {:name "Apache 2.0"
             :url "https://www.apache.org/licenses/LICENSE-2.0"}
-  :dependencies [[org.clojure/clojure "1.8.0"]])
+  :dependencies [[org.clojure/clojure "1.8.0"]
+                 [local-file "0.1.0"]])
