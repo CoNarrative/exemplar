@@ -59,7 +59,8 @@
 (deftest record-once
   (testing "Records first call"
     (exemplar/record-once my-func)
-    (my-func [1 2 3])
+    (is (= (my-func [1 2 3]) [2 3 4])
+      "Return value of first call to fn should not be altered")
     (let [saved (exemplar/show my-func)]
       (is (= saved
              {:name 'my-func
@@ -67,5 +68,17 @@
               :source "(defn my-func [args] (map inc args))"
               :out '(2 3 4)
               :in [[1 2 3]]}))
-      (my-func [0])
-      (is (= (exemplar/show my-func) saved)))))
+      (is (= (my-func [5 4 3]) [6 5 4])
+          "Return value of subsequent calls to fn should not be altered")
+      (is (= (exemplar/show my-func) saved)
+          "record-once should only save the first call")))
+
+  (testing "Saved in memory"
+    (let [saved-mem (get-in @exemplar.core/state [:entries "exemplar.core-test/my-func"])]
+      (is (= (select-keys saved-mem [:ns :name])
+             {:ns 'exemplar.core-test,
+              :name 'my-func}))
+      (is (= true (clojure.string/includes?
+                    (str (:var-val saved-mem))
+                    "exemplar.core_test$my_func"))
+          ":var-val should correspond to the original var"))))
