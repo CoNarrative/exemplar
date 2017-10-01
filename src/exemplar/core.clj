@@ -134,14 +134,39 @@
              (= true (:exemplar/recording? met#))
              (apply (stop-recording ~func) ~'args)))))))
 
+(defmacro record
+  "Repeatedly persists input and output of the provided function while allowing it to work normally.
+   Restores the initial var's value on explicit call to stop-recording"
+  [func]
+  `(alter-var-root (var ~func)
+     (fn [~'f]
+       (let [the-var# (var ~func)
+             var-val# @the-var#
+             met# (meta the-var#)
+             ns# (ns-name (:ns met#))
+             name# (:name met#)]
+         (save-mem ns# name# var-val#))
+       (fn [& ~'args]
+         (let [met# (meta (var ~func))
+               ns# (ns-name (:ns met#))
+               name# (:name met#)]
+           (when (nil? (:exemplar/recording? met#))
+             (alter-meta! (var ~func) assoc :exemplar/recording? true))
+           (let [out# (apply ~'f ~'args)]
+             (do
+               ;; TODO. Only need to get the source once. Could store in meta.
+               (save* ns# name# ~'args (str (eval `(get-source ~ns# ~name#))) out#)
+               out#)))))))
+
 
 (defn delete-all [path]
   (spit path "{}"))
 
 ;(register-path "test.edn")
-;(record-once my-func)
-;(my-func [1 2 4])
+;(record my-func)
+;(my-func [1 2 7])
 ;(stop-recording my-func)
+;(record-once my-func)
 ;;@state
 ;(meta #'my-func)
 ;@#'my-func
@@ -153,4 +178,4 @@
 ;; TODO.
 ;; 1. Record with atom/impure functions
 ;; 2. Record a namespace
-;; 3. Record until explicit stop
+;; 3. --Record until explicit stop--

@@ -82,3 +82,40 @@
                     (str (:var-val saved-mem))
                     "exemplar.core_test$my_func"))
           ":var-val should correspond to the original var"))))
+
+(deftest record
+  (testing "Records first call"
+    (exemplar/record my-func)
+    (is (= (my-func [1 2 3]) [2 3 4])
+        "Return value of first call to fn should not be altered")
+    (let [saved (exemplar/show my-func)]
+      (is (= saved
+            {:name 'my-func
+             :ns 'exemplar.core-test
+             :source "(defn my-func [args] (map inc args))"
+             :out '(2 3 4)
+             :in [[1 2 3]]})
+         "First call should have been persisted")))
+  (testing "Records second call"
+    (is (= (my-func [1 2 5]) [2 3 6])
+      "Return value of second call to fn should not be altered")
+    (let [saved (exemplar/show my-func)]
+      (is (= saved
+            {:name 'my-func
+             :ns 'exemplar.core-test
+             :source "(defn my-func [args] (map inc args))"
+             :out '(2 3 6)
+             :in [[1 2 5]]})
+          "Second call should have been persisted")))
+  (testing "Stop recording"
+    (exemplar/stop-recording my-func)
+    (is (= true (clojure.string/includes?
+                  (str @#'my-func)
+                  "exemplar.core_test$my_func"))
+     "Value of var should have been reset to what it was before recording started")
+    (is (= (my-func [1 2 3]) [2 3 4])
+        "Fn should behave normally after recording has stopped")
+    (let [saved (exemplar/show my-func)]
+      (is (and (= (:in saved) [[1 2 5]])
+               (= (:out saved) [2 3 6]))
+          "Recording should have stopped but new values were written"))))
