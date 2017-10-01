@@ -1,8 +1,10 @@
 (ns exemplar.core
   (:require [local-file]))
 
+(defn my-func [xs] (map inc xs))
 
-(def state (atom {:path nil}))
+(def state (atom {:path nil
+                  :entries {}}))
 
 (defn ns->abs-path [ns]
   (-> (the-ns ns)
@@ -10,21 +12,30 @@
     (local-file/find-resource)
     (.getPath)))
 
-(defn register-path [path]
+(defn register-path
+  "Register the file to which data will be persisted"
+  [path]
   (swap! exemplar.core/state assoc :path path))
 
-(defn write-out [path example]
+(defn write-out
+  "Writes to persist path, merging into the existing persisted data"
+  [path m]
   (let [in (slurp path)
-        examples (read-string (if (= in "") "{}" in))]
-    (spit path (with-out-str (clojure.pprint/pprint (merge examples example))))))
+        persisted (read-string (if (= in "") "{}" in))]
+    (spit path (with-out-str (clojure.pprint/pprint (merge persisted m))))))
 
-(defn rec [lines line-number form-str]
+(defn rec
+  "Recur target for get-source"
+  [lines line-number form-str]
   (try
     (read-string (str form-str (nth lines line-number)))
     (catch Exception e
+      (println "Trying again" (count lines) line-number)
       (rec lines (inc line-number) (str form-str (nth lines line-number))))))
 
-(defmacro get-source [ns name]
+(defmacro get-source
+  "Gets the source code for a function"
+  [ns name]
   (let [met (meta (ns-resolve ns name))
         abs-path (ns->abs-path ns)
         line (:line met)]
@@ -32,7 +43,9 @@
       (let [lines (line-seq rdr)]
         `'~(rec lines (dec line) "")))))
 
-(defmacro save [sexpr]
+(defmacro save
+  "Persists a function call"
+  [sexpr]
   (let [met `(meta (var ~(first sexpr)))
         fn-ns `(ns-name (:ns ~met))
         fn-name `(:name ~met)
@@ -44,7 +57,9 @@
         entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 
-(defmacro run [sym]
+(defmacro run
+  "Calls the provided function with the persisted input"
+  [sym]
   (let [met `(meta (var ~sym))
         key `(clojure.string/join "/" [(ns-name (:ns ~met)) (:name ~met)])
         examples '(read-string (slurp (:path @exemplar.core/state)))
@@ -52,33 +67,121 @@
         ex `(apply ~sym (:in ~data))]
     ex))
 
-(defmacro show [sym]
+(defmacro show
+  "Returns the persisted data for a function"
+  [sym]
   (let [met `(meta (var ~sym))
         key `(clojure.string/join "/" [(ns-name (:ns ~met)) (:name ~met)])
         examples '(read-string (slurp (:path @exemplar.core/state)))
         data `(get ~examples ~key)]
     `(merge {:name ~key} ~data)))
 
-(defn save* [ns name args ^String source out]
+(defn write-mem
+  [entry]
+  (let [key (ffirst entry)
+        value (second (first entry))]
+    (swap! exemplar.core/state assoc-in [:entries key] value)))
+
+(defn save*
+  "Same as `save` but used internally in different compilation layer"
+  [ns name args ^String source out]
   (let [key (clojure.string/join "/" [ns name])
         entry {key {:in (vec args) :out out :source source :ns ns :name name}}]
-    (write-out (:path (deref exemplar.core/state)) entry)))
+    (write-out (:path @exemplar.core/state) entry)))
 
-(defmacro record [func]
+(defn save-mem [ns name var-val]
+  (let [key (clojure.string/join "/" [ns name])
+        entry {key {:ns ns :name name :var-val var-val}}]
+    (write-mem entry)))
+
+(defmacro record
+  "Persists input and output of the provided function while allowing it to work normally"
+  [func]
   `(alter-var-root (var ~func)
     (fn [~'f]
+      (let [the-var# (var ~func)
+            var-val# @the-var#
+            met# (meta the-var#)
+            ns# (ns-name (:ns met#))
+            name# (:name met#)]
+        (do (println "The var" var-val#)
+            (save-mem ns# name# var-val#)))
       (fn [& ~'args]
         (let [met# (meta (var ~func))
               ns# (ns-name (:ns met#))
               name# (:name met#)]
-              ;called-form# (cons name# ~'args)]
             (if-not (:exemplar/recording? met#)
               (let [out# (apply ~'f ~'args)]
                 (do
+                  (println "Setting recording to true")
                   (alter-meta! (var ~func) assoc :exemplar/recording? true)
                   (save* ns# name# ~'args (str (eval `(get-source ~ns# ~name#))) out#)
                   out#))
               (apply ~'f ~'args)))))))
 
+(defmacro stop-recording
+  "Stops persisting inputs to the provided function"
+  [func]
+  `(let [cur-var# (var ~func)
+         met# (meta cur-var#)
+         ns# (ns-name (:ns met#))
+         name# (:name met#)
+         key# (clojure.string/join "/" [ns# name#])
+         old-var-val# (get-in @exemplar.core/state [:entries key# :var-val])]
+     (do
+       (println "old var val" old-var-val#)
+       (alter-meta! cur-var# dissoc :exemplar/recording?)
+       (alter-var-root cur-var#
+         (fn [~'f]
+           (fn [& ~'args]
+             (do (println "applying args to old var" ~'args old-var-val#)
+               (apply old-var-val# ~'args))))))))
+
+;(defmacro record-once
+;  "Persists input and output of the provided function while allowing it to work normally"
+;  [func]
+;  `(alter-var-root (var ~func)
+;     (fn [~'f]
+;       (let [the-var# (var ~func)
+;             var-val# @the-var#
+;             met# (meta the-var#)
+;             ns# (ns-name (:ns met#))
+;             name# (:name met#)]
+;         (do (println "The var" var-val#)
+;             (save-mem ns# name# var-val#)))
+;       (fn [& ~'args]
+;         (let [met# (meta (var ~func))
+;               ns# (ns-name (:ns met#))
+;               name# (:name met#)]
+;           (cond
+;             ;; unset - set recording to true, persist data, write var to mem, rt out
+;             (= nil (:exemplar/recording? met#))
+;             (let [out# (apply ~'f ~'args)]
+;               (do
+;                 (alter-meta! (var ~func) assoc :exemplar/recording? true)
+;                 (save* ns# name# ~'args (str (eval `(get-source ~ns# ~name#))) out#)
+;                 out#))
+;             ;; set true - unset recording and return orig var
+;             (= true (:exemplar/recording? met#))
+;             (do
+;               (stop-recording ~func))))))))
+;               ;(apply ~'f ~'args))))))))
+
+
 (defn delete-all [path]
   (spit path "{}"))
+
+;(register-path "test.edn")
+;(record my-func)
+;(my-func [1 2 8])
+;(stop-recording my-func)
+;@state
+;(meta #'my-func)
+;@#'my-func
+;(apply @#'my-func [[1 2 3]])
+
+
+;; TODO.
+;; 1. Record with atom/impure functions
+;; 2. Record a namespace
+;; 3. Record until explicit stop

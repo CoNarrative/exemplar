@@ -1,1 +1,6 @@
-{}
+{"exemplar.core/my-func"
+ {:in [[1 2 8]],
+  :out (2 3 9),
+  :source "(defn my-func [xs] (map inc xs))",
+  :ns exemplar.core,
+  :name my-func}}

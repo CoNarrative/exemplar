@@ -56,9 +56,9 @@
           :out '(2 3 4 3 3 3)
           :in ['(1 2 3 2 2 2)]})))
 
-(deftest recording
+(deftest record-once
   (testing "Records first call"
-    (exemplar/record my-func)
+    (exemplar/record-once my-func)
     (my-func [1 2 3])
     (let [saved (exemplar/show my-func)]
       (is (= saved
