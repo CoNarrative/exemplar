@@ -1,6 +1,7 @@
 (ns exemplar.core-test
   (:require [clojure.test :refer :all]
-            [exemplar.core :as exemplar]))
+            [exemplar.core :as exemplar]
+            [exemplar.ns-a :as ns-a]))
 
 (defn main-fixture [f]
   (exemplar/register-path "test.edn")
@@ -14,18 +15,18 @@
 
 (deftest basic
   (testing "Show before save"
-    (is (= (exemplar/show my-func)
-           {:name "exemplar.core-test/my-func"})))
+    (is (= (exemplar/show ns-a/some-func)
+           {:name "exemplar.ns-a/some-func"})))
   (testing "Show after save"
-    (exemplar/save (my-func [1 2 3]))
-    (is (= (exemplar/show my-func)
-           {:name 'my-func
-            :ns 'exemplar.core-test
-            :source "(defn my-func [args] (map inc args))"
+    (exemplar/save (ns-a/some-func [1 2 3]))
+    (is (= (exemplar/show ns-a/some-func)
+           {:name 'some-func
+            :ns 'exemplar.ns-a
+            :source "(defn some-func [xs] (map inc xs))"
             :out '(2 3 4)
             :in [[1 2 3]]})))
   (testing "Run after save"
-    (is (= (exemplar/run my-func)
+    (is (= (exemplar/run ns-a/some-func)
            '(2 3 4)))))
 
 (def users
@@ -58,29 +59,29 @@
 
 (deftest record-once
   (testing "Records first call"
-    (exemplar/record-once my-func)
-    (is (= (my-func [1 2 3]) [2 3 4])
+    (exemplar/record-once ns-a/some-func)
+    (is (= (ns-a/some-func [1 2 3]) [2 3 4])
       "Return value of first call to fn should not be altered")
-    (let [saved (exemplar/show my-func)]
+    (let [saved (exemplar/show ns-a/some-func)]
       (is (= saved
-             {:name 'my-func
-              :ns 'exemplar.core-test
-              :source "(defn my-func [args] (map inc args))"
+             {:name 'some-func
+              :ns 'exemplar.ns-a
+              :source "(defn some-func [xs] (map inc xs))"
               :out '(2 3 4)
               :in [[1 2 3]]}))
-      (is (= (my-func [5 4 3]) [6 5 4])
+      (is (= (ns-a/some-func [5 4 3]) [6 5 4])
           "Return value of subsequent calls to fn should not be altered")
-      (is (= (exemplar/show my-func) saved)
+      (is (= (exemplar/show ns-a/some-func) saved)
           "record-once should only save the first call")))
 
   (testing "Saved in memory"
-    (let [saved-mem (get-in @exemplar.core/state [:entries "exemplar.core-test/my-func"])]
+    (let [saved-mem (get-in @exemplar.core/state [:entries "exemplar.ns-a/some-func"])]
       (is (= (select-keys saved-mem [:ns :name])
-             {:ns 'exemplar.core-test,
-              :name 'my-func}))
+             {:ns 'exemplar.ns-a,
+              :name 'some-func}))
       (is (= true (clojure.string/includes?
                     (str (:var-val saved-mem))
-                    "exemplar.core_test$my_func"))
+                    "exemplar.ns_a$some_func"))
           ":var-val should correspond to the original var"))))
 
 (deftest record
@@ -119,3 +120,42 @@
       (is (and (= (:in saved) [[1 2 5]])
                (= (:out saved) [2 3 6]))
           "Recording should have stopped but new values were written"))))
+
+(deftest get-ns-meta
+  (testing "Identify def vs. defn vs. defmacro"
+    (is (= (map #(dissoc % :var) (exemplar.core/get-decl-types exemplar.ns-a))
+          `[{:symbol exemplar.ns-a/some-func
+             :fn? true}
+            {:symbol exemplar.ns-a/some-macro :macro? true}
+            {:symbol exemplar.ns-a/some-atom
+             :def? true}
+            {:symbol exemplar.ns-a/some-impure-func
+             :fn? true}]))))
+
+(deftest record-namespace-once
+  (testing "Records first call"
+    (exemplar.core/record-namespace-once exemplar.ns-a)
+    (is (= (ns-a/some-func [1 2 3]) [2 3 4])
+      "Return value of first call to fn should not be altered")
+    (let [saved (exemplar/show ns-a/some-func)]
+      (is (= saved
+            {:name 'some-func
+             :ns 'exemplar.ns-a
+             :source "(defn some-func [xs] (map inc xs))"
+             :out '(2 3 4)
+             :in [[1 2 3]]})
+        "Incorrect saved values")
+      (is (= (ns-a/some-func [5 4 3]) [6 5 4])
+        "Return value of subsequent calls to fn should not be altered")
+      (is (= (exemplar/show ns-a/some-func) saved)
+        "record-once should only save the first call")))
+
+  (testing "Saved in memory"
+    (let [saved-mem (get-in @exemplar.core/state [:entries "exemplar.ns-a/some-func"])]
+      (is (= (select-keys saved-mem [:ns :name])
+            {:ns 'exemplar.ns-a,
+             :name 'some-func}))
+      (is (= true (clojure.string/includes?
+                    (str (:var-val saved-mem))
+                    "exemplar.ns_a$some_func"))
+        ":var-val should correspond to the original var"))))
