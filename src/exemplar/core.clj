@@ -105,18 +105,17 @@
        (alter-meta! cur-var# dissoc :exemplar/recording?)
        (alter-var-root cur-var# (fn [~'f] old-var-val#)))))
 
-(defmacro stop-recording*
+(defn stop-recording*
   "Stops persisting data for a function. Accepts a var."
   [avar]
-  `(let [cur-var# ~avar
-         met# (meta cur-var#)
-         ns# (ns-name (:ns met#))
-         name# (:name met#)
-         key# (clojure.string/join "/" [ns# name#])
-         old-var-val# (get-in @exemplar.core/state [:entries key# :var-val])]
-     (do
-       (alter-meta! cur-var# dissoc :exemplar/recording?)
-       (alter-var-root cur-var# (fn [~'f] old-var-val#)))))
+  (let [met (meta avar)
+        ns (ns-name (:ns met))
+        name (:name met)
+        key (clojure.string/join "/" [ns name])
+        old-var-val (get-in @exemplar.core/state [:entries key :var-val])]
+    (do
+      (alter-meta! avar dissoc :exemplar/recording?)
+      (alter-var-root avar (fn [f] old-var-val)))))
 
 (defmacro record-once
   "Persists first input and output of the provided function while allowing it to work normally.
@@ -198,6 +197,30 @@
                (save* ns# name# ~'args (str (eval `(get-source ~ns# ~name#))) out#)
                out#)))))))
 
+(defn record*
+  "Repeatedly persists input and output of the provided function while allowing it to work normally.
+   Restores the initial var's value on explicit call to stop-recording"
+  [avar]
+  (alter-var-root avar
+     (fn [f]
+       (let [var-val @avar
+             met (meta avar)
+             ns (ns-name (:ns met))
+             name (:name met)]
+         (save-mem ns name var-val))
+       (fn [& args]
+         (let [met (meta avar)
+               ns (ns-name (:ns met))
+               name (:name met)]
+           (when (nil? (:exemplar/recording? met))
+             (alter-meta! avar assoc :exemplar/recording? true))
+           (let [out (apply f args)]
+             (do
+               ;; TODO. Only need to get the source once. Could store in meta.
+               (save* ns name args (str (eval `(get-source ~ns ~name))) out)
+               out)))))))
+
+
 (defn disambiguate-ns-decl
   ([sym]
    (try
@@ -236,6 +259,20 @@
       (filter :fn?)
       (map :var)
       (run! exemplar.core/record-once*))))
+
+(defmacro record-namespace [sym]
+  (let [types-of-decls `(exemplar.core/get-decl-types ~sym)]
+    `(->> ~types-of-decls
+       (filter :fn?)
+       (map :var)
+       (run! exemplar.core/record*))))
+
+(defmacro stop-recording-namespace [sym]
+  (let [types-of-decls `(exemplar.core/get-decl-types ~sym)]
+    `(->> ~types-of-decls
+       (filter :fn?)
+       (map :var)
+       (run! exemplar.core/stop-recording*))))
 
 (defn delete-all [path]
   (spit path "{}"))

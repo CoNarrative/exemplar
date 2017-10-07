@@ -159,3 +159,40 @@
                     (str (:var-val saved-mem))
                     "exemplar.ns_a$some_func"))
         ":var-val should correspond to the original var"))))
+
+(deftest record-namespace
+  (testing "Records first call"
+    (exemplar/record-namespace exemplar.ns-a)
+    (is (= (ns-a/some-func [1 2 3]) [2 3 4])
+      "Return value of first call to fn should not be altered")
+    (let [saved (exemplar/show ns-a/some-func)]
+      (is (= saved
+            {:name 'some-func
+             :ns 'exemplar.ns-a
+             :source "(defn some-func [xs] (map inc xs))"
+             :out '(2 3 4)
+             :in [[1 2 3]]})
+        "First call should have been persisted")))
+  (testing "Records second call"
+    (is (= (ns-a/some-func [1 2 5]) [2 3 6])
+      "Return value of second call to fn should not be altered")
+    (let [saved (exemplar/show exemplar.ns-a/some-func)]
+      (is (= saved
+            {:name 'some-func
+             :ns 'exemplar.ns-a
+             :source "(defn some-func [xs] (map inc xs))"
+             :out '(2 3 6)
+             :in [[1 2 5]]})
+        "Second call should have been persisted")))
+  (testing "Stop recording"
+    (exemplar/stop-recording-namespace exemplar.ns-a)
+    (is (= true (clojure.string/includes?
+                  (str @#'ns-a/some-func)
+                  "exemplar.ns_a$some_func"))
+      "Value of var should have been reset to what it was before recording started")
+    (is (= (ns-a/some-func [1 2 3]) [2 3 4])
+      "Fn should behave normally after recording has stopped")
+    (let [saved (exemplar/show ns-a/some-func)]
+      (is (and (= (:in saved) [[1 2 5]])
+            (= (:out saved) [2 3 6]))
+        "Recording should have stopped but new values were written"))))
