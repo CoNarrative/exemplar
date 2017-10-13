@@ -1,7 +1,9 @@
 (ns exemplar.core-test
-  (:require [clojure.test :refer :all]
-            [exemplar.core :as exemplar]
-            [exemplar.ns-a :as ns-a]))
+    (:require [clojure.test :refer :all]
+              [exemplar.core :as exemplar]
+              [exemplar.ns-a :as ns-a])
+    (:import [java.io File]
+             [exemplar.core UnreadableTag]))
 
 (defn main-fixture [f]
   (exemplar/register-path "test.edn")
@@ -196,3 +198,40 @@
       (is (and (= (:in saved) [[1 2 5]])
             (= (:out saved) [2 3 6]))
         "Recording should have stopped but new values were written"))))
+
+(defn echo [x] x)
+
+(deftest unreadable-tags
+  (testing "#object[java.io.File] nested"
+    (let [file (File. "my-file.edn")]
+      (exemplar/save (echo {:some-keyword file}))
+      (let [saved (exemplar/show echo)
+            in-arg (some-> saved :in (first) :some-keyword)
+            out (get-in saved [:out :some-keyword])]
+        (is (= (type out) UnreadableTag))
+        (is (= (type in-arg) UnreadableTag))
+        (is (= (:tag out) 'object))
+        (is (vector? (:value out)))
+        (is (= 'java.io.File (first (:value out)))))))
+  (testing "#object[java.io.File] non-nested"
+    (let [file (File. "my-file.edn")]
+      (exemplar/save (echo file))
+      (let [saved (exemplar/show echo)
+            in-arg (some-> saved :in (first))
+            out (get-in saved [:out])]
+        (is (= (type out) UnreadableTag))
+        (is (= (type in-arg) UnreadableTag))
+        (is (= (:tag out) 'object))
+        (is (vector? (:value out)))
+        (is (= 'java.io.File (first (:value out)))))))
+  (testing "IDeref"
+    (let [a (atom {:hello "world"})]
+      (exemplar/save (echo a))
+      (let [saved (exemplar/show echo)
+            in-arg (some-> saved :in (first))
+            out (get-in saved [:out])]
+        (is (= (type out) UnreadableTag))
+        (is (= (type in-arg) UnreadableTag))
+        (is (= (:tag out) 'object))
+        (is (vector? (:value out)))
+        (is (= 'clojure.lang.Atom (first (:value out))))))))

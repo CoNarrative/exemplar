@@ -1,8 +1,10 @@
 (ns exemplar.core
-  (:require [local-file]))
+    (:require [local-file]
+              [clojure.edn :as edn]))
 
 
 (def state (atom {:path nil
+                  :debug? false
                   :entries {}}))
 
 (defn ns->abs-path [ns]
@@ -16,12 +18,39 @@
   [path]
   (swap! exemplar.core/state assoc :path path))
 
+(defrecord UnreadableTag [tag value])
+
+(defn string-reader [x]
+  (edn/read-string {:default ->UnreadableTag}
+    x))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Contributed by Dominic Monroe
+(def ^:dynamic *original-dispatch* nil)
+
+(defmulti my-dispatch class)
+
+(defmethod my-dispatch clojure.lang.IDeref
+  [obj]
+  (print obj))
+
+(defmethod my-dispatch :default
+  [obj]
+  (*original-dispatch* obj))
+
+(defn my-pprint [x]
+  (binding [*original-dispatch* clojure.pprint/*print-pprint-dispatch*
+            clojure.pprint/*print-pprint-dispatch* my-dispatch]
+    ;; ^^ turn the binding into a macro, see the source for clojure.pprint/with-pprint-dispatch or similar
+    (clojure.pprint/pprint x)))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (defn write-out
   "Writes to persist path, merging into the existing persisted data"
   [path m]
   (let [in (slurp path)
-        persisted (read-string (if (= in "") "{}" in))]
-    (spit path (with-out-str (clojure.pprint/pprint (merge persisted m))))))
+        persisted (string-reader (if (= in "") "{}" in))]
+    (spit path (with-out-str (my-pprint (merge persisted m))))))
 
 (defn rec
   "Recur target for get-source"
@@ -29,7 +58,10 @@
   (try
     (read-string (str form-str (nth lines line-number)))
     (catch Exception e
-      (rec lines (inc line-number) (str form-str (nth lines line-number))))))
+      (try
+        (rec lines (inc line-number) (str form-str (nth lines line-number)))
+        (catch IndexOutOfBoundsException e2
+          "<unknown>")))))
 
 (defmacro get-source
   "Gets the source code for a function"
@@ -55,12 +87,19 @@
         entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 
+(defn save*
+  "Same as `save` but used internally in different compilation layer"
+  [ns name args ^String source out]
+  (let [key (clojure.string/join "/" [ns name])
+        entry {key {:in (vec args) :out out :source source :ns ns :name name}}]
+    (write-out (:path @exemplar.core/state) entry)))
+
 (defmacro run
   "Calls the provided function with the persisted input"
   [sym]
   (let [met `(meta (var ~sym))
         key `(clojure.string/join "/" [(ns-name (:ns ~met)) (:name ~met)])
-        examples '(read-string (slurp (:path @exemplar.core/state)))
+        examples '(exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
         data `(get ~examples ~key)
         ex `(apply ~sym (:in ~data))]
     ex))
@@ -70,7 +109,7 @@
   [sym]
   (let [met `(meta (var ~sym))
         key `(clojure.string/join "/" [(ns-name (:ns ~met)) (:name ~met)])
-        examples '(read-string (slurp (:path @exemplar.core/state)))
+        examples '(exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
         data `(get ~examples ~key)]
     `(merge {:name ~key} ~data)))
 
@@ -79,13 +118,6 @@
   (let [key (ffirst entry)
         value (second (first entry))]
     (swap! exemplar.core/state assoc-in [:entries key] value)))
-
-(defn save*
-  "Same as `save` but used internally in different compilation layer"
-  [ns name args ^String source out]
-  (let [key (clojure.string/join "/" [ns name])
-        entry {key {:in (vec args) :out out :source source :ns ns :name name}}]
-    (write-out (:path @exemplar.core/state) entry)))
 
 (defn save-mem [ns name var-val]
   (let [key (clojure.string/join "/" [ns name])
