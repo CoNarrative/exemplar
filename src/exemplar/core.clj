@@ -1,5 +1,6 @@
 (ns exemplar.core
     (:require [local-file]
+              [clojure.pprint]
               [clojure.edn :as edn]))
 
 
