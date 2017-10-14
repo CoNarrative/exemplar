@@ -1,4 +1,4 @@
-# Exemplar [![Clojars Project](https://img.shields.io/clojars/v/com.conarrative/exemplar.svg)](https://clojars.org/com.conarrative/exemplar)
+# Exemplar [![Clojars Project](https://img.shields.io/clojars/v/com.conarrative/exemplar.svg)](https://clojars.org/com.conarrative/exemplar) [![CircleCI](https://circleci.com/gh/CoNarrative/exemplar.svg?style=shield)](https://circleci.com/gh/CoNarrative/exemplar)
 
 Record functions.
 
