@@ -47,10 +47,26 @@
     (clojure.pprint/pprint x)))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn- pretty-demunge
+  [fn-object]
+  (let [dem-fn (repl/demunge (str fn-object))
+        pretty (second (re-find #"(.*?\/.*?)[\-\-|@].*" dem-fn))]
+    (if pretty pretty dem-fn)))
+
+(defn defunc [xs]
+  (mapv (fn [x]
+          (if (fn? x)
+            (symbol (pretty-demunge (str x)))
+            x))
+        xs))
+
 (defn write-out
   "Writes to persist path, merging into the existing persisted data"
   [path m]
   (let [in (slurp path)
+        m (into {}
+                (for [[k v] m]
+                  [k (update v :in defunc)]))
         persisted (string-reader (if (= in "") "{}" in))]
     (spit path (with-out-str (my-pprint (merge persisted m))))))
 
