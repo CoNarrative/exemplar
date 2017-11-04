@@ -1,7 +1,8 @@
 (ns exemplar.core
     (:require [local-file]
               [clojure.pprint]
-              [clojure.edn :as edn]))
+              [clojure.edn :as edn]
+              [clojure.repl :as repl]))
 
 
 (def state (atom {:path nil
@@ -46,10 +47,26 @@
     (clojure.pprint/pprint x)))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn- pretty-demunge
+  [fn-object]
+  (let [dem-fn (repl/demunge (str fn-object))
+        pretty (second (re-find #"(.*?\/.*?)[\-\-|@].*" dem-fn))]
+    (if pretty pretty dem-fn)))
+
+(defn defunc [xs]
+  (mapv (fn [x]
+          (if (fn? x)
+            (symbol (pretty-demunge (str x)))
+            x))
+        xs))
+
 (defn write-out
   "Writes to persist path, merging into the existing persisted data"
   [path m]
   (let [in (slurp path)
+        m (into {}
+                (for [[k v] m]
+                  [k (update v :in defunc)]))
         persisted (string-reader (if (= in "") "{}" in))]
     (spit path (with-out-str (my-pprint (merge persisted m))))))
 
@@ -84,7 +101,8 @@
         realized-name (eval fn-name)
         key `(clojure.string/join "/" [~fn-ns ~fn-name])
         args (vec (rest sexpr))
-        source (eval `(get-source ~realized-ns ~realized-name))
+        source (or (try (eval `(get-source ~realized-ns ~realized-name)) (catch Exception ex))
+                   (repl/source-fn (first sexpr)))
         entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 

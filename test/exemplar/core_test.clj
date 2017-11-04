@@ -59,6 +59,25 @@
           :out '(2 3 4 3 3 3)
           :in ['(1 2 3 2 2 2)]})))
 
+(defn fn-with-clojure-core-fn-as-argument [f xs] (mapv f xs))
+(deftest save-show-clojure-core-fn-as-argument
+  (exemplar/save (fn-with-clojure-core-fn-as-argument inc [1 2 3]))
+  (is (= (exemplar/show fn-with-clojure-core-fn-as-argument)
+         '{:name fn-with-clojure-core-fn-as-argument
+           :ns exemplar.core-test
+           :source "(defn fn-with-clojure-core-fn-as-argument [f xs] (mapv f xs))"
+           :out [2 3 4]
+           :in [clojure.core/inc [1 2 3]]})))
+
+(deftest save-show-clojure-core-fn
+  (exemplar/save (mapv inc [1 2 3]))
+  (is (= (exemplar/show mapv)
+        '{:name mapv
+          :ns clojure.core
+          :source "(defn mapv\n  \"Returns a vector consisting of the result of applying f to the\n  set of first items of each coll, followed by applying f to the set\n  of second items in each coll, until any one of the colls is\n  exhausted.  Any remaining items in other colls are ignored. Function\n  f should accept number-of-colls arguments.\"\n  {:added \"1.4\"\n   :static true}\n  ([f coll]\n     (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)\n         persistent!))\n  ([f c1 c2]\n     (into [] (map f c1 c2)))\n  ([f c1 c2 c3]\n     (into [] (map f c1 c2 c3)))\n  ([f c1 c2 c3 & colls]\n     (into [] (apply map f c1 c2 c3 colls))))"
+          :out [2 3 4]
+          :in [clojure.core/inc [1 2 3]]})))
+
 (deftest record-once
   (testing "Records first call"
     (exemplar/record-once ns-a/some-func)
