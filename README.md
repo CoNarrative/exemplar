@@ -1,4 +1,8 @@
-# Exemplar [![Clojars Project](https://img.shields.io/clojars/v/com.conarrative/exemplar.svg)](https://clojars.org/com.conarrative/exemplar) [![CircleCI](https://circleci.com/gh/CoNarrative/exemplar.svg?style=shield)](https://circleci.com/gh/CoNarrative/exemplar)
+# Exemplar 
+[![CircleCI](https://circleci.com/gh/CoNarrative/exemplar.svg?style=shield)](https://circleci.com/gh/CoNarrative/exemplar)
+[![codecov](https://codecov.io/gh/CoNarrative/exemplar/branch/master/graph/badge.svg)](https://codecov.io/gh/CoNarrative/exemplar)
+[![Clojars Project](https://img.shields.io/clojars/v/com.conarrative/exemplar.svg)](https://clojars.org/com.conarrative/exemplar) 
+
 
 Record functions.
 
