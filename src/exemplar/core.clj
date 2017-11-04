@@ -84,7 +84,8 @@
         realized-name (eval fn-name)
         key `(clojure.string/join "/" [~fn-ns ~fn-name])
         args (vec (rest sexpr))
-        source (eval `(get-source ~realized-ns ~realized-name))
+        source (clojure.repl/source-fn (first sexpr))
+        #_(eval `(get-source ~realized-ns ~realized-name))
         entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 
@@ -113,6 +114,14 @@
         examples '(exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
         data `(get ~examples ~key)]
     `(merge {:name ~key} ~data)))
+
+(defn show* [avar]
+  (let [met (meta avar)
+        key (clojure.string/join "/" [(ns-name (:ns met)) (:name met)])
+        examples (exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
+        data (get examples key)]
+    (merge {:name key} data)))
+
 
 (defn write-mem
   [entry]
@@ -309,3 +318,75 @@
 
 (defn delete-all [path]
   (spit path "{}"))
+
+(exemplar.core/register-path "test.edn")
+(defn my-func [xs] (map inc xs))
+(exemplar.core/save (my-func [1 2 3]))
+(exemplar.core/show my-func)
+
+(defmacro gen-test [fn-name]
+  (let [rec `(exemplar.core/show ~fn-name)
+        in (:in rec)
+        out (:out rec)
+        test-name (symbol (str fn-name "-test"))]
+    (if (and in out)
+      `(clojure.test/deftest ~test-name
+        (clojure.test/is (= (apply ~fn-name ~in)
+                           ~out)))
+      `(println (str "No recorded values for " '~fn-name
+                     " in file " ~(:path @state) ".")))))
+
+(defmacro write-test [s]
+  (let [recorded `(exemplar.core/show ~s)]
+    `(spit "test-test.clj"
+       (with-out-str
+         (print
+           (clojure.string/join "\n"
+            ["(deftest " '~s "-test"
+             "  (is (= (apply " '~s " " (:in ~recorded) ")"
+             "         " (:out ~recorded) ")"]))))))
+
+(defn init-test-ns [ns-name path]
+  (spit path
+     (with-out-str
+       (print
+         (str
+           "(ns " ns-name"\n"
+           "  (:require [clojure.test :refer [deftest is testing]]))")))))
+
+(defmacro get-test-source
+  "Gets the source code for a function"
+  [fqns]
+  (let [abs-path (ns->abs-path fqns)
+        line 1]
+    (with-open [rdr (clojure.java.io/reader abs-path)]
+      (let [lines (line-seq rdr)]
+        `'~(rec lines (dec line) "")))))
+(register-path "test.edn")
+
+(defn my-func [f xs] (map f xs))
+(save (my-func inc [1 2 3]))
+(save (map inc [1 2 3]))
+(slurp "test.edn")
+
+;(get-test-source exemplar.core/ns-a)
+;
+;(-> state
+;  (register-path!)
+;  (set-out-path!))
+;
+;(require 'exemplar.ns-a)
+;(require 'test-test)
+;(exemplar.ns-a/some-func [123])
+;
+;(init-test-ns "foo-test" "test-test.clj")
+;(concat
+;  (edn/read-string (slurp "test-test.clj"))
+;  ['foo])
+;(gen-test bonkers)
+;(write-test my-func)
+;(exemplar.core/show* #'my-func)
+;(macroexpand my-func-test)
+;(clojure.test/run-tests)
+;(spit "test-test.clj" "")
+;(exemplar.core/show my-func)

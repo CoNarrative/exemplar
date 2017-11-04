@@ -1,1 +1,23 @@
-{}
+{"exemplar.core/my-func"
+ {:ns exemplar.core,
+  :name my-func,
+  :source "",
+  :out (2 3 4),
+  :in
+  [#object[clojure.core$inc 0x3ef115c "clojure.core$inc@3ef115c"]
+   [1 2 3]]},
+ "clojure.core/map"
+ {:ns clojure.core,
+  :name map,
+  :source
+  "(defn map\n  \"Returns a lazy sequence consisting of the result of applying f to\n  the set of first items of each coll, followed by applying f to the\n  set of second items in each coll, until any one of the colls is\n  exhausted.  Any remaining items in other colls are ignored. Function\n  f should accept number-of-colls arguments. Returns a transducer when\n  no collection is provided.\"\n  {:added \"1.0\"\n   :static true}\n  ([f]\n    (fn [rf]\n      (fn\n        ([] (rf))\n        ([result] (rf result))\n        ([result input]\n           (rf result (f input)))\n        ([result input & inputs]\n           (rf result (apply f input inputs))))))\n  ([f coll]\n   (lazy-seq\n    (when-let [s (seq coll)]\n      (if (chunked-seq? s)\n        (let [c (chunk-first s)\n              size (int (count c))\n              b (chunk-buffer size)]\n          (dotimes [i size]\n              (chunk-append b (f (.nth c i))))\n          (chunk-cons (chunk b) (map f (chunk-rest s))))\n        (cons (f (first s)) (map f (rest s)))))))\n  ([f c1 c2]\n   (lazy-seq\n    (let [s1 (seq c1) s2 (seq c2)]\n      (when (and s1 s2)\n        (cons (f (first s1) (first s2))\n              (map f (rest s1) (rest s2)))))))\n  ([f c1 c2 c3]\n   (lazy-seq\n    (let [s1 (seq c1) s2 (seq c2) s3 (seq c3)]\n      (when (and  s1 s2 s3)\n        (cons (f (first s1) (first s2) (first s3))\n              (map f (rest s1) (rest s2) (rest s3)))))))\n  ([f c1 c2 c3 & colls]\n   (let [step (fn step [cs]\n                 (lazy-seq\n                  (let [ss (map seq cs)]\n                    (when (every? identity ss)\n                      (cons (map first ss) (step (map rest ss)))))))]\n     (map #(apply f %) (step (conj colls c3 c2 c1))))))",
+  :out (2 3 4),
+  :in
+  [#exemplar.core.UnreadableTag{:tag exemplar.core.UnreadableTag,
+                                :value
+                                {:tag object,
+                                 :value
+                                 [clojure.core$inc
+                                  65999196
+                                  "clojure.core$inc@3ef115c"]}}
+   [1 2 3]]}}
