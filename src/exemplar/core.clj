@@ -1,7 +1,9 @@
 (ns exemplar.core
-    (:require [local-file]
+    (:require [exemplar.util :as util]
+              [local-file]
               [clojure.pprint]
-              [clojure.edn :as edn]))
+              [clojure.edn :as edn]
+              [clojure.repl :as repl]))
 
 
 (def state (atom {:path nil
@@ -46,10 +48,27 @@
     (clojure.pprint/pprint x)))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+
+(defn- pretty-demunge
+  [fn-object]
+  (let [dem-fn (repl/demunge (str fn-object))
+        pretty (second (re-find #"(.*?\/.*?)[\-\-|@].*" dem-fn))]
+    (if pretty pretty dem-fn)))
+
+(defn defunc [xs]
+  (mapv (fn [x]
+          (if (fn? x)
+            (symbol (pretty-demunge (str x)))
+            x))
+        xs))
+
 (defn write-out
   "Writes to persist path, merging into the existing persisted data"
   [path m]
   (let [in (slurp path)
+        m (into {}
+            (for [[k v] m]
+              [k (update v :in defunc)]))
         persisted (string-reader (if (= in "") "{}" in))]
     (spit path (with-out-str (my-pprint (merge persisted m))))))
 
@@ -84,8 +103,8 @@
         realized-name (eval fn-name)
         key `(clojure.string/join "/" [~fn-ns ~fn-name])
         args (vec (rest sexpr))
-        source (clojure.repl/source-fn (first sexpr))
-        #_(eval `(get-source ~realized-ns ~realized-name))
+        source (or (try (eval `(get-source ~realized-ns ~realized-name)) (catch Exception ex))
+                   (repl/source-fn (first sexpr)))
         entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 
@@ -121,7 +140,6 @@
         examples (exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
         data (get examples key)]
     (merge {:name key} data)))
-
 
 (defn write-mem
   [entry]
@@ -262,7 +280,6 @@
                (save* ns name args (str (eval `(get-source ~ns ~name))) out)
                out)))))))
 
-
 (defn disambiguate-ns-decl
   ([sym]
    (try
@@ -319,40 +336,122 @@
 (defn delete-all [path]
   (spit path "{}"))
 
-(exemplar.core/register-path "test.edn")
-(defn my-func [xs] (map inc xs))
-(exemplar.core/save (my-func [1 2 3]))
-(exemplar.core/show my-func)
+;(defmacro gen-test [fn-name]
+;  (let [rec `(exemplar.core/show ~fn-name)
+;        in (:in rec)
+;        out (:out rec)
+;        test-name (symbol (str fn-name "-test"))]
+;    (if (and in out)
+;      `(clojure.test/deftest ~test-name
+;        (clojure.test/is (= (apply ~fn-name ~in)
+;                           ~out)))
+;      `(println (str "No recorded values for " '~fn-name
+;                     " in file " ~(:path @state) ".")))))
 
-(defmacro gen-test [fn-name]
-  (let [rec `(exemplar.core/show ~fn-name)
-        in (:in rec)
-        out (:out rec)
-        test-name (symbol (str fn-name "-test"))]
-    (if (and in out)
-      `(clojure.test/deftest ~test-name
-        (clojure.test/is (= (apply ~fn-name ~in)
-                           ~out)))
-      `(println (str "No recorded values for " '~fn-name
-                     " in file " ~(:path @state) ".")))))
-
-(defmacro write-test [s]
-  (let [recorded `(exemplar.core/show ~s)]
-    `(spit "test-test.clj"
+(defmacro write-test
+  [sym ^String test-file]
+  (let [recorded `(exemplar.core/show ~sym)
+        ;_ (println (eval recorded))
+        fqsym `(str (:ns ~recorded) "/" (:name ~recorded))
+        test-name `(clojure.string/replace
+                     (str (:ns ~recorded) "-" (:name ~recorded))
+                     "." "-")
+        out `(if (list? (:out ~recorded))
+               (str "'" (:out ~recorded))
+               (:out ~recorded))]
+    `(spit ~test-file
        (with-out-str
          (print
-           (clojure.string/join "\n"
-            ["(deftest " '~s "-test"
-             "  (is (= (apply " '~s " " (:in ~recorded) ")"
-             "         " (:out ~recorded) ")"]))))))
+           (str
+            "(deftest " ~test-name "-test\n"
+             "  (is (= (apply " ~fqsym " " (:in ~recorded) ")\n"
+             "         " ~out ")))\n\n")))
+       :append true)))
+(defn my-func [xs] (filter #{(first xs)} xs))
+;(exemplar.core/save (my-func [1 2 3]))
+;(write-test my-func "test/exemplar/my_generated_test_file.clj")
 
-(defn init-test-ns [ns-name path]
-  (spit path
-     (with-out-str
-       (print
-         (str
-           "(ns " ns-name"\n"
-           "  (:require [clojure.test :refer [deftest is testing]]))")))))
+(defmacro init-test-ns
+  [[quot ns-sym] ^String test-root ^clojure.lang.PersistentVector package-names]
+  (let [path (str
+               ;; need to know if test, test/clj, etc.
+               test-root
+               ;; ensure a slash here
+               (if (= (last test-root) "/") "" "/")
+               ;; join package names with slash
+               (clojure.string/join "/" package-names) "/"
+               ;; replace - with _ for filename to write
+               (clojure.string/replace (str ns-sym) "-" "_") ".clj")
+        fqsym (symbol (str (clojure.string/join "." package-names) "." ns-sym))]
+    (if (.exists (clojure.java.io/as-file path))
+      (str "File " path " already exists. Won't overwrite.")
+      `(spit ~path
+        ~(with-out-str
+          (print
+            `(~'ns ~fqsym
+               (:require [clojure.test :refer ~'[deftest is testing]]))
+            \newline\newline\newline))))))
+;(init-test-ns 'my-generated-test-file "test" ["exemplar"])
+
+(defn add-require [test-file-path ns]
+  (with-open [rdr (clojure.java.io/reader test-file-path)]
+    (let [sexpr (clojure.edn/read-string (first (line-seq rdr)))
+          [ns-decl require-statement] (partition-by #(not (seq? %)) sexpr)
+          updated (map #(if (vector? %)
+                          (conj % [ns])
+                          %)
+                   (first require-statement))]
+      (concat ns-decl updated))))
+
+(defn ensure-require [test-file-path ns]
+  (with-open [rdr (clojure.java.io/reader test-file-path)]
+    (let [l (line-seq rdr)
+          _ (println (second l))
+          _ (println (type (first l)))]
+          ;_ (println l)]
+          ;_ (println (clojure.edn/read-string (first l)))]
+      (clojure.edn/read-string (first l)))))
+      ;true)))
+          ;sexpr (clojure.edn/read-string (first (line-seq rdr)))
+          ;[ns-decl require-statement] (partition-by #(not (seq? %)) sexpr)
+          ;updated (map #(if (and (vector? %)
+          ;                    (not ((set %) ns))
+          ;                (conj % [ns])
+          ;                %)
+          ;          (first require-statement))]
+      ;(= (concat ns-decl updated)
+      ;  (concat ns-decl require-statement))))
+
+;(ensure-require "test/exemplar/generated_tests.clj" 'my-ns)
+
+(defn read-forms
+  [file]
+  (let [rdr (-> file clojure.java.io/file clojure.java.io/reader java.io.PushbackReader.)]
+    (loop [forms []]
+      (if-let [form (try (clojure.edn/read rdr) (catch Exception e nil))]
+        (recur (conj forms form))
+        (do (.close rdr)
+            forms)))))
+
+;(read-forms "test/exemplar/generated_tests.clj")
+;; https://www.rosettacode.org/wiki/Remove_lines_from_a_file#Clojure
+;(defn remove-lines [filepath start nskip]
+;  (with-open [rdr (clojure.java.io/reader filepath)]
+;    (with-open [wrt (clojure.java.io/writer (str filepath ".tmp"))]
+;      (loop [s start
+;             n nskip]
+;        (if-let [line (.readLine rdr)]
+;          (cond
+;            (> s 1)  (do (doto wrt (.write line) (.newLine))
+;                         (recur (dec s) n))
+;            (pos? n) (recur s (dec n))
+;            :else    (do (doto wrt (.write line) (.newLine))
+;                         (recur s n)))
+;          (when (pos? n)
+;            (println "WARN: You are trying to remove lines beyond EOF"))))))
+;  (.renameTo
+;    (clojure.java.io/file (str filepath ".tmp"))
+;    (clojure.java.io/file filepath)))
 
 (defmacro get-test-source
   "Gets the source code for a function"
@@ -362,31 +461,4 @@
     (with-open [rdr (clojure.java.io/reader abs-path)]
       (let [lines (line-seq rdr)]
         `'~(rec lines (dec line) "")))))
-(register-path "test.edn")
 
-(defn my-func [f xs] (map f xs))
-(save (my-func inc [1 2 3]))
-(save (map inc [1 2 3]))
-(slurp "test.edn")
-
-;(get-test-source exemplar.core/ns-a)
-;
-;(-> state
-;  (register-path!)
-;  (set-out-path!))
-;
-;(require 'exemplar.ns-a)
-;(require 'test-test)
-;(exemplar.ns-a/some-func [123])
-;
-;(init-test-ns "foo-test" "test-test.clj")
-;(concat
-;  (edn/read-string (slurp "test-test.clj"))
-;  ['foo])
-;(gen-test bonkers)
-;(write-test my-func)
-;(exemplar.core/show* #'my-func)
-;(macroexpand my-func-test)
-;(clojure.test/run-tests)
-;(spit "test-test.clj" "")
-;(exemplar.core/show my-func)

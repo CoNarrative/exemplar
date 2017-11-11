@@ -23,34 +23,6 @@ Yet, unless it makes it into a test, we throw it away.
 
 What if we didn't do that?
 
-## Keeping fake data
-It can be nice to see an example of the input a function was designed to receive. This can 
-be especially helpful in cases where the input to a function is not defined by a spec.
-If obtaining fake data is something we'd like to do less of, saving it might prevent us from 
-recreating it later. Even when we change the input a function receives, having an example of the 
-old input might be helpful. We might be able to slightly modify the old example input to produce 
-the new.
-
-What else might we do with persisted mock data? We can generate 
-tests. For pure functions, this is especially trivial. 
-
-We can generate documentation that includes example inputs and outputs.
-
-And if you're already using fake data in development, this should all be free.
-
-## Recording functions
-What if this appeals to you and you have an existing codebase? 
- 
-Exemplar can record the same information about a function as an application is running. 
-Functions can be recorded just once or until an explicit call to `stop-recording`. Persisted 
-entries for functions are overwritten. The data persisted is always that 
-of the last call, so you won't accumulate 1,000 example inputs and outputs per function. 
-
-For convenience, you can also record entire namespaces.
-
-## Usage
-
-Basic:
 ```clj
 (ns my-ns
   (:require [exemplar.core :refer :all])
@@ -73,9 +45,27 @@ Basic:
 (run my-function)
 => 6
 ```
-## Recording
 
-### Functions
+## Why keep fake data?
+It can be nice to see an example of the input a function was designed to receive. This can 
+be especially helpful in cases where the input to a function is not defined by a spec.
+If obtaining fake data is something we'd like to do less of, saving it might prevent us from 
+recreating it later. Even when we change the input a function receives, having an example of the 
+old input might be helpful. We might be able to slightly modify the old example input to produce 
+the new.
+
+What else could we do with persisted mock data? We can generate 
+tests. For pure functions, this is especially trivial. 
+
+We can generate documentation that includes example inputs and outputs.
+
+And if you're already using fake data in development, this should all be free.
+
+## Recording a running application
+Exemplar can record the same information about a function as an application is running. 
+Functions can be recorded once or until an explicit call to `stop-recording`. Persisted 
+entries for functions are overwritten. The data persisted is always that 
+of the last call, so you won't accumulate 1,000 example inputs and outputs per function. 
 
 Record once:
 ```clj
@@ -153,9 +143,10 @@ Record until stop:
     :out 9
     :source "(defn my-function [a b c] (+ a b c))"}
 ```
-### Namespaces
 
-Record until stop:
+
+For convenience, you can also record entire namespaces.
+
 ```clj
 (ns my-ns
   (:require [exemplar.core :refer :all])
@@ -229,7 +220,6 @@ Record until stop:
     :out (2 3 4)
     :source "(defn my-other-function [xs] (map inc xs))"}
 ```
-
 
 ## FAQ
 #### You're recording all inputs and outputs to a function?
