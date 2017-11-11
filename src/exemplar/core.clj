@@ -349,17 +349,24 @@
         out `(if (list? (:out ~recorded))
                (str "'" (:out ~recorded))
                (:out ~recorded))]
-    `(spit ~test-file
-       (with-out-str
-         (print
-           (str
-            "(deftest " ~test-name "-test\n"
-             "  (is (= (apply " ~fqsym " " (:in ~recorded) ")\n"
-             "         " ~out ")))\n\n")))
-       :append true)))
+    `(do (util/apply-to-form-at-line
+          ~test-file
+          1
+          #(util/ensure-require % (:ns ~recorded)))
+       (spit ~test-file
+         (with-out-str
+           (print
+             (str
+              "(deftest " ~test-name "-test\n"
+               "  (is (= (apply " ~fqsym " " (:in ~recorded) ")\n"
+               "         " ~out ")))\n\n")))
+         :append true))))
 (defn my-func [xs] (filter #{(first xs)} xs))
+;(register-path "test.edn")
 ;(exemplar.core/save (my-func [1 2 3]))
+;(exemplar.core/show my-func)
 ;(write-test my-func "test/exemplar/my_generated_test_file.clj")
+;(exemplar.core/delete-all "test.edn")
 
 (defmacro init-test-ns
   "Creates a test file with the provided arguments. Exits if file already exists
@@ -395,14 +402,6 @@
             \newline\newline\newline))))))
 ;(init-test-ns 'my-generated-test-file "test" ["exemplar"])
 
-(defn ensure-require
-  "Adds namespace to top-level ns/require form if not present."
-  [form ns]
-  (let [[ns-decl require-statement] (partition-by #(not (seq? %)) form)]
-    (if-let [exists? (boolean (some #{[ns]} (first require-statement)))]
-      form
-      `(~@ns-decl ~(concat (first require-statement) [[ns]])))))
-
 
 (defn read-forms
   [file]
@@ -434,42 +433,6 @@
                          (recur s n)))
           (when (pos? n)
             (println "WARN: You are trying to remove lines beyond EOF"))))))
-  (.renameTo
-    (clojure.java.io/file (str filepath ".tmp"))
-    (clojure.java.io/file filepath)))
-
-(defn apply-to-form-at-line [filepath start f]
-  (with-open [rdr (clojure.java.io/reader filepath)]
-    (with-open [wrt (clojure.java.io/writer (str filepath ".tmp"))]
-      (loop [line-number 1
-             acc-form-str ""
-             form-read? false]
-        (if-let [line (.readLine rdr)]
-          (cond
-            ;; try to read form when line we're on is at or above where we want to start and haven't read the form
-            (and (>= line-number start)
-                 (not form-read?))
-            (let [lines (str acc-form-str line)
-                  form (try (clojure.edn/read-string lines) (catch Exception e nil))]
-              (if form
-                ;; Parsed target form. Write result of calling f and recur with form-read? true
-                (do
-                  (println "Got form " form line-number)
-                  (doto wrt (.write (str (f form))) (.newLine))
-                  (recur -1 nil true))
-                ;; Form must be on multiple lines, so recur with lines we've read so far
-                (recur
-                  (inc line-number)
-                  lines
-                  false)))
-
-            form-read?
-            ;; pass everything else through
-            (do
-              (doto wrt (.write line) (.newLine))
-              (recur -1 nil true))
-
-            :else   (println "unhandled"))))))
   (.renameTo
     (clojure.java.io/file (str filepath ".tmp"))
     (clojure.java.io/file filepath)))
