@@ -1,4 +1,4 @@
-(ns exemplar.my-generated-test-file (:require [clojure.test :refer [deftest is testing]]))
+(ns exemplar.my-generated-test-file (:require [clojure.test :refer [deftest is testing]] [exemplar.core]))
  
  
 (deftest exemplar-core-my-func-test
