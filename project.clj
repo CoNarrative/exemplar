@@ -1,4 +1,4 @@
-(defproject com.conarrative/exemplar "0.0.1"
+(defproject com.conarrative/exemplar "0.0.2-alpha"
   :description "Record inputs and outputs."
   :url "https://github.com/CoNarrative/exemplar.git"
   :license {:name "Apache 2.0"
