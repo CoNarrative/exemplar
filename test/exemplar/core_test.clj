@@ -254,3 +254,14 @@
         (is (= (:tag out) 'object))
         (is (vector? (:value out)))
         (is (= 'clojure.lang.Atom (first (:value out))))))))
+
+(deftest init-test-ns-test
+  (let [filepath "test/exemplar/test_test_ns.clj"]
+    (try
+      (do
+        (exemplar/init-test-ns 'test-test-ns "test" ["exemplar"])
+        (is (= true (.exists (clojure.java.io/as-file filepath))))
+        (is (= (first (clojure.edn/read-string (str "[" (slurp filepath) "]")))
+               '(ns exemplar.test-test-ns
+                  (:require [clojure.test :refer [deftest is testing]])))))
+      (finally (.delete (File. filepath))))))
