@@ -134,13 +134,6 @@
         data `(get ~examples ~key)]
     `(merge {:name ~key} ~data)))
 
-(defn show* [avar]
-  (let [met (meta avar)
-        key (clojure.string/join "/" [(ns-name (:ns met)) (:name met)])
-        examples (exemplar.core/string-reader (slurp (:path @exemplar.core/state)))
-        data (get examples key)]
-    (merge {:name key} data)))
-
 (defn write-mem
   [entry]
   (let [key (ffirst entry)
@@ -410,59 +403,3 @@
             `(~'ns ~fqsym
                (:require [clojure.test :refer ~'[deftest is testing]]))
             \newline\newline\newline))))))
-
-(defn read-forms
-  [file]
-  (let [rdr (-> file clojure.java.io/file clojure.java.io/reader java.io.PushbackReader.)]
-    (loop [forms []]
-      (if-let [form (try (clojure.edn/read rdr) (catch Exception e nil))]
-        (recur (conj forms form))
-        (do (.close rdr)
-            forms)))))
-
-;; https://www.rosettacode.org/wiki/Remove_lines_from_a_file#Clojure
-(defn remove-lines [filepath start nskip]
-  (with-open [rdr (clojure.java.io/reader filepath)]
-    (with-open [wrt (clojure.java.io/writer (str filepath ".tmp"))]
-      (loop [s start
-             n nskip] ;; add a counter here?
-        (if-let [line (.readLine rdr)]
-          (cond
-            ;; if start > 1 write to temp and dec start
-            ;; lines pass through while start-line-number is less than where we start removing
-            (> s 1)  (do (doto wrt (.write line) (.newLine))
-                         (recur (dec s) n))
-            ;; if started removing, "remove" as long as num-to-remove > 0 by not writing
-            ;; those lines to temp file
-            (pos? n) (recur s (dec n))
-            ;; we're done removing, so write all remaining lines
-            :else    (do (doto wrt (.write line) (.newLine))
-                         (recur s n)))
-          (when (pos? n)
-            (println "WARN: You are trying to remove lines beyond EOF"))))))
-  (.renameTo
-    (clojure.java.io/file (str filepath ".tmp"))
-    (clojure.java.io/file filepath)))
-
-;(defn apply-to-file [f filepath start nskip]
-;  (with-open [rdr (clojure.java.io/reader filepath)]
-;    (with-open [wrt (clojure.java.io/writer (str filepath ".tmp"))]
-;      (loop [s start
-;             n nskip] ;; add a counter here?
-;        (if-let [line (.readLine rdr)]
-;          (cond
-;            ;; if start > 1 write to temp and dec start
-;            ;; lines pass through while start-line-number is less than where we start removing
-;            (> s 1)  (do (doto wrt (.write line) (.newLine))
-;                         (recur (dec s) n))
-;            ;; if started removing, "remove" as long as num-to-remove > 0 by not writing
-;            ;; those lines to temp file
-;            (pos? n) (recur s (dec n))
-;            ;; we're done removing, so write all remaining lines
-;            :else    (do (doto wrt (.write line) (.newLine))
-;                         (recur s n)))
-;          (when (pos? n)
-;            (println "WARN: You are trying to remove lines beyond EOF"))))))
-;  (.renameTo
-;    (clojure.java.io/file (str filepath ".tmp"))))
-
