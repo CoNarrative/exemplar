@@ -368,9 +368,7 @@
                 nil
                 %))
        (spit ~test-file
-         (with-out-str
-           (print
-             (make-basic-test ~test-name ~fqsym (:in ~recorded) ~out)))
+         (make-basic-test ~test-name ~fqsym (:in ~recorded) ~out)
          :append true))))
 
 (defn my-func [xs] (filter #{(first xs)} xs))
