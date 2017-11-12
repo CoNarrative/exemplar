@@ -224,6 +224,35 @@ For convenience, you can also record entire namespaces.
     :out (2 3 4)
     :source "(defn my-other-function [xs] (map inc xs))"}
 ```
+## Generate tests
+
+1. Ensure you've registered the path to your `.edn` file and recorded the function:
+```clj
+(exemplar/register-path "test.edn")
+(defn my-func [xs] (map inc xs))
+(exemplar/save (my-func [1 2 3])
+```
+2. Generate a test file (if one doesn't exist)
+```clj
+(init-test-ns 'my-generated-tests "test" ["my-proj"])
+;; Creates `test/my-proj/my_generated_tests.clj` with namespace `my-proj.my-generated-tests`
+```
+3. Generate a test
+```clj
+(exemplar/write-test my-func "test/my-proj/my_generated_tests.clj")
+```
+> "test/my-proj/my_generated_tests.clj":
+```clj
+(ns my-proj.my-generated-test 
+  (:require [clojure.test :refer [deftest is testing]]
+                  [my-proj.core]))
+ 
+ 
+(deftest my-proj-core-my-func-test
+  (is (= (apply my-proj.core/my-func [[1 2 3]])
+         '(2 3 4))))
+```
+
 
 ## FAQ
 #### You're recording all inputs and outputs to a function?
@@ -252,7 +281,7 @@ vars an impure function might reference. A function that performs a side effect 
 
 ## Goals
 - Have fun
-- Generate tests
+- ~~Generate tests~~
 - Generate documentation
 - Allow accumulation of inputs and outputs instead of overwriting
 
