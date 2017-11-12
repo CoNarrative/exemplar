@@ -254,3 +254,33 @@
         (is (= (:tag out) 'object))
         (is (vector? (:value out)))
         (is (= 'clojure.lang.Atom (first (:value out))))))))
+
+(deftest init-test-ns-test
+  (let [filepath "test/exemplar/test_test_ns.clj"]
+    (try
+      (do
+        (exemplar/init-test-ns 'test-test-ns "test" ["exemplar"])
+        (is (= true (.exists (clojure.java.io/as-file filepath))))
+        (is (= (first (clojure.edn/read-string (str "[" (slurp filepath) "]")))
+               '(ns exemplar.test-test-ns
+                  (:require [clojure.test :refer [deftest is testing]])))))
+      (finally (.delete (File. filepath))))))
+
+(deftest write-test-test
+  (let [filepath "test/exemplar/test_test_ns.clj"]
+    (try
+      (do
+        (exemplar/save (my-func [1 2 3]))
+        (exemplar/init-test-ns 'test-test-ns "test" ["exemplar"])
+        (exemplar/write-test my-func filepath)
+        (let [test-file-forms (binding [*read-eval* false]
+                                (read-string (str "[" (slurp filepath) "]")))]
+          (is (= (first test-file-forms)
+                '(ns exemplar.test-test-ns
+                     (:require [clojure.test :refer [deftest is testing]]
+                               [exemplar.core-test]))))
+          (is (= (second test-file-forms)
+                '(deftest exemplar-core-test-my-func-test
+                   (is (= (apply exemplar.core-test/my-func [[1 2 3]])
+                         '(2 3 4))))))))
+      (finally (.delete (File. filepath))))))
