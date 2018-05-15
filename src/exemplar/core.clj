@@ -49,7 +49,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn- pretty-demunge
+(defn pretty-demunge
   [fn-object]
   (let [dem-fn (repl/demunge (str fn-object))
         pretty (second (re-find #"(.*?\/.*?)[\-\-|@].*" dem-fn))]
@@ -105,7 +105,12 @@
         args (vec (rest sexpr))
         source (or (try (eval `(get-source ~realized-ns ~realized-name)) (catch Exception ex))
                    (repl/source-fn (first sexpr)))
-        entry `{~key {:in ~args :out ~sexpr :source (str '~source) :ns ~fn-ns :name ~fn-name}}]
+        entry `{~key (merge {:in     ~args
+                             :out    ~sexpr
+                             :source (str '~source)
+                             :ns     ~fn-ns
+                             :name   ~fn-name}
+                            (select-keys ~met [:arglists :file :line :column :doc]))}]
     `(write-out (:path (deref exemplar.core/state)) ~entry)))
 
 (defn save*
@@ -364,12 +369,6 @@
          (make-basic-test ~test-name ~fqsym (:in ~recorded) ~out)
          :append true))))
 
-(defn my-func [xs] (filter #{(first xs)} xs))
-;(register-path "test.edn")
-;(exemplar.core/save (my-func [1 2 3]))
-;(exemplar.core/show my-func)
-;(write-test my-func "test/exemplar/my_generated_test_file.clj")
-;(exemplar.core/delete-all "test.edn")
 
 (defmacro init-test-ns
   "Creates a test file with the provided arguments. Exits if file already exists
@@ -391,7 +390,9 @@
                ;; ensure a slash here
                (if (= (last test-root) "/") "" "/")
                ;; join package names with slash
-               (clojure.string/join "/" package-names) "/"
+               (clojure.string/join "/"
+                 (mapv #(clojure.string/replace % "-" "_")
+                   package-names)) "/"
                ;; replace - with _ for filename to write
                (clojure.string/replace (str ns-sym) "-" "_") ".clj")
         fqsym (symbol (str (clojure.string/join "." package-names) "." ns-sym))]
@@ -403,3 +404,26 @@
             `(~'ns ~fqsym
                (:require [clojure.test :refer ~'[deftest is testing]]))
             \newline\newline\newline))))))
+
+(defn my-func [xs] (filter #{(first xs)} xs))
+
+(comment
+  (register-path "test.edn")
+  (exemplar.core/delete-all "test.edn")
+  (exemplar.core/save (my-func [1 2 3]))
+  (exemplar.core/show my-func)
+  (write-test my-func "test/exemplar/my_generated_test_file.clj")
+  (exemplar.core/delete-all "test.edn")
+
+  (defn ns->abs-path [ns]
+    (let [_ (println "ns" (the-ns ns))
+          namespace-to-source (-> (the-ns ns) (local-file/namespace-to-source))
+          _ (println "ns to source" namespace-to-source)
+          resource (local-file/find-resource namespace-to-source)
+          _ (println "resource" resource)
+          path (.getPath resource)
+          _ (println "path!" path)]
+      (-> (the-ns ns)
+          (local-file/namespace-to-source)
+          (local-file/find-resource)
+          (.getPath)))))

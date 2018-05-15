@@ -1,7 +1,8 @@
 (ns exemplar.core-test
-    (:require [clojure.test :refer :all]
-              [exemplar.core :as exemplar]
-              [exemplar.ns-a :as ns-a])
+  (:require [clojure.test :refer :all]
+            [exemplar.core :as exemplar]
+            [exemplar.ns-a :as ns-a]
+            [clojure.spec.alpha :as s])
     (:import [java.io File]
              [exemplar.core UnreadableTag]))
 
@@ -15,18 +16,33 @@
 (defn my-func [args]
   (map inc args))
 
+(s/def ::doc string?)
+(s/def ::name simple-symbol?)
+(s/def ::file (s/and string? #(clojure.string/includes? % ".clj")))
+(s/def ::source string?)
+(s/def ::column number?)
+(s/def ::line number?)
+(s/def ::out any?)
+(s/def ::in (s/coll-of any? :kind vector?))
+
+(s/def ::saved-entry
+  (s/keys :req-un [::name ::ns ::source ::out ::in ::column ::line ::arglists ::source ::file]
+          :opt-un [::doc]))
+
 (deftest basic
   (testing "Show before save"
     (is (= (exemplar/show ns-a/some-func)
            {:name "exemplar.ns-a/some-func"})))
   (testing "Show after save"
     (exemplar/save (ns-a/some-func [1 2 3]))
-    (is (= (exemplar/show ns-a/some-func)
-           {:name 'some-func
-            :ns 'exemplar.ns-a
-            :source "(defn some-func [xs] (map inc xs))"
-            :out '(2 3 4)
-            :in [[1 2 3]]})))
+    (let [saved (exemplar/show ns-a/some-func)]
+      (is (s/valid? ::saved-entry saved))
+      (is (= (select-keys saved [:name :ns :source :out :in])
+             {:name   'some-func
+              :ns     'exemplar.ns-a
+              :source "(defn some-func [xs] (map inc xs))"
+              :out    '(2 3 4)
+              :in     [[1 2 3]]}))))
   (testing "Run after save"
     (is (= (exemplar/run ns-a/some-func)
            '(2 3 4)))))
@@ -39,44 +55,52 @@
 
 (deftest variables
   (exemplar/save (user-ids users))
-  (is (= (exemplar/show user-ids)
-         {:name 'user-ids
-          :ns 'exemplar.core-test
-          :source "(defn user-ids [users] (mapv :id users))"
-          :out [1 2]
-          :in [[{:id 1 :first-name "Bob" :last-name "Smith"}
-                {:id 2 :first-name "Mary" :last-name "Brown"}]]})))
+  (let [saved (exemplar/show user-ids)]
+    (is (s/valid? ::saved-entry saved))
+    (is (= (select-keys saved [:name :ns :source :out :in])
+           {:name   'user-ids
+            :ns     'exemplar.core-test
+            :source "(defn user-ids [users] (mapv :id users))"
+            :out    [1 2]
+            :in     [[{:id 1 :first-name "Bob" :last-name "Smith"}
+                      {:id 2 :first-name "Mary" :last-name "Brown"}]]}))))
 
 (def my-list [1 2 3])
 (def my-other-list [2 2 2])
 
 (deftest operations-with-variables
   (exemplar/save (my-func (concat my-list my-other-list)))
-  (is (= (exemplar/show my-func)
-         {:name 'my-func
-          :ns 'exemplar.core-test
-          :source "(defn my-func [args] (map inc args))"
-          :out '(2 3 4 3 3 3)
-          :in ['(1 2 3 2 2 2)]})))
+  (let [saved (exemplar/show my-func)]
+    (is (s/valid? ::saved-entry saved))
+    (is (= (select-keys saved [:name :ns :source :out :in])
+          {:name   'my-func
+           :ns     'exemplar.core-test
+           :source "(defn my-func [args] (map inc args))"
+           :out    '(2 3 4 3 3 3)
+           :in     ['(1 2 3 2 2 2)]}))))
 
 (defn fn-with-clojure-core-fn-as-argument [f xs] (mapv f xs))
 (deftest save-show-clojure-core-fn-as-argument
   (exemplar/save (fn-with-clojure-core-fn-as-argument inc [1 2 3]))
-  (is (= (exemplar/show fn-with-clojure-core-fn-as-argument)
-         '{:name fn-with-clojure-core-fn-as-argument
-           :ns exemplar.core-test
-           :source "(defn fn-with-clojure-core-fn-as-argument [f xs] (mapv f xs))"
-           :out [2 3 4]
-           :in [clojure.core/inc [1 2 3]]})))
+  (let [saved (exemplar/show fn-with-clojure-core-fn-as-argument)]
+    (is (s/valid? ::saved-entry saved))
+    (is (= (select-keys saved [:name :ns :source :out :in])
+          '{:name   fn-with-clojure-core-fn-as-argument
+            :ns     exemplar.core-test
+            :source "(defn fn-with-clojure-core-fn-as-argument [f xs] (mapv f xs))"
+            :out    [2 3 4]
+            :in     [clojure.core/inc [1 2 3]]}))))
 
 (deftest save-show-clojure-core-fn
   (exemplar/save (mapv inc [1 2 3]))
-  (is (= (exemplar/show mapv)
-        '{:name mapv
-          :ns clojure.core
-          :source "(defn mapv\n  \"Returns a vector consisting of the result of applying f to the\n  set of first items of each coll, followed by applying f to the set\n  of second items in each coll, until any one of the colls is\n  exhausted.  Any remaining items in other colls are ignored. Function\n  f should accept number-of-colls arguments.\"\n  {:added \"1.4\"\n   :static true}\n  ([f coll]\n     (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)\n         persistent!))\n  ([f c1 c2]\n     (into [] (map f c1 c2)))\n  ([f c1 c2 c3]\n     (into [] (map f c1 c2 c3)))\n  ([f c1 c2 c3 & colls]\n     (into [] (apply map f c1 c2 c3 colls))))"
-          :out [2 3 4]
-          :in [clojure.core/inc [1 2 3]]})))
+  (let [saved (exemplar/show mapv)]
+    (is (s/valid? ::saved-entry saved))
+    (is (= (select-keys saved [:name :ns :source :out :in])
+          '{:name   mapv
+            :ns     clojure.core
+            :source "(defn mapv\n  \"Returns a vector consisting of the result of applying f to the\n  set of first items of each coll, followed by applying f to the set\n  of second items in each coll, until any one of the colls is\n  exhausted.  Any remaining items in other colls are ignored. Function\n  f should accept number-of-colls arguments.\"\n  {:added \"1.4\"\n   :static true}\n  ([f coll]\n     (-> (reduce (fn [v o] (conj! v (f o))) (transient []) coll)\n         persistent!))\n  ([f c1 c2]\n     (into [] (map f c1 c2)))\n  ([f c1 c2 c3]\n     (into [] (map f c1 c2 c3)))\n  ([f c1 c2 c3 & colls]\n     (into [] (apply map f c1 c2 c3 colls))))"
+            :out    [2 3 4]
+            :in     [clojure.core/inc [1 2 3]]}))))
 
 (deftest record-once
   (testing "Records first call"

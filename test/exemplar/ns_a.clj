@@ -10,3 +10,7 @@
 
 (defn some-impure-func [x]
   (reset! some-atom x))
+
+(comment
+  (defmacro infix-macro [a operator b]
+    `(~@[operator a b])))
